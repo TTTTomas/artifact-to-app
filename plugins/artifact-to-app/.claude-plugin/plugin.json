@@ -1,0 +1,20 @@
+{
+  "name": "artifact-to-app",
+  "version": "1.0.0",
+  "description": "Turn a Claude desktop-app artifact (one installed with \"Install as app\") into a standalone macOS app that runs without Claude: a ~1 MB native Swift shell around WKWebView (or Electron), installed in /Applications.",
+  "author": {
+    "name": "Tomas Berg",
+    "url": "https://github.com/TTTTomas"
+  },
+  "homepage": "https://github.com/TTTTomas/artifact-to-app",
+  "repository": "https://github.com/TTTTomas/artifact-to-app",
+  "license": "MIT",
+  "keywords": [
+    "artifacts",
+    "macos",
+    "desktop",
+    "swift",
+    "electron",
+    "export"
+  ]
+}

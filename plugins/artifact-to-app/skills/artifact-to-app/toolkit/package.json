@@ -1,0 +1,9 @@
+{
+  "name": "artifact-app",
+  "private": true,
+  "description": "Electron versions for --runtime electron exports (the Swift runtime needs no packages).",
+  "devDependencies": {
+    "electron": "^39.0.0",
+    "electron-builder": "^26.0.0"
+  }
+}

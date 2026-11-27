@@ -1,0 +1,21 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "artifact-app",
+  "description": "Tools for turning Claude artifacts into standalone apps.",
+  "owner": {
+    "name": "Tomas Berg",
+    "url": "https://github.com/TTTTomas"
+  },
+  "plugins": [
+    {
+      "name": "artifact-to-app",
+      "description": "Turn a Claude desktop-app artifact into a standalone macOS app that runs without Claude, and install it in /Applications.",
+      "version": "1.0.0",
+      "source": "./plugins/artifact-to-app",
+      "category": "productivity",
+      "author": {
+        "name": "Tomas Berg"
+      }
+    }
+  ]
+}
