@@ -64,6 +64,8 @@ The exporter measures each page and warns when its title-bar content starts unde
 
 For a native centered title, a page adds `<meta name="artifact-app:titlebar" content="native-title">` and hides its own title in the standalone app with `html.artifact-native-title .bar h1 { display: none; }`. Claude's app never sets that class, so the page keeps its own title there. The exporter warns if title-bar controls run into the centered title.
 
+**Frameless windows.** `frame: false` (with the `overlay` permission) gives a window without buttons that keeps macOS's rounded corners and shadow, which suits menu bar panels.
+
 **Rules of thumb:**
 - A title bar with just a title and a few small controls looks most native with the centered title. A bar full of controls keeps its own left-aligned title.
 - A blended title bar (no divider) hands over to the content at its bottom edge, with no extra gap; the exporter warns when it doesn't. With a visible divider, normal spacing below the line is fine.

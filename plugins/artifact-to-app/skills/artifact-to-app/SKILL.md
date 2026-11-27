@@ -89,6 +89,7 @@ It's opt-in: the shell never guesses which element is the title.
 - A title bar that holds just the app's title plus a few small controls on the right (a status, a pin, a refresh) gets the native centered title. The page's own title and any icon next to it are hidden in the standalone app; the controls stay on the right.
 - A title bar full of controls (pills, stats, several buttons) keeps the page's own left-aligned title, styled with `--titlebar-font` and `--titlebar-color`.
 - Either way the page pads its title bar with `--titlebar-inset-left`.
+- A menu bar panel (opened by its menu bar icon, hidden when it loses focus or by a pin) has no window buttons: `frame: false` and the `overlay` permission. In Claude's app, the new permission asks once.
 - **Blended title bar** (no divider: no bottom border or shadow, and no background of its own): the content starts right at the bar's bottom edge, with no extra gap. The bar's own height already gives the title equal room above and below, as in native windows. With a visible divider, the usual spacing below the line is fine.
 - If removing a gap leaves the page shorter than its window, reduce the `height` in `window.setOptions` to match, so nothing scrolls and no empty band remains at the bottom.
 
@@ -99,6 +100,8 @@ During the icon-capture run the page reports where its title-bar content starts.
 - **Notifications** are macOS's own: the first one asks the person to allow them.
 - **Window options:** the page sets them with `window.setOptions`. They are applied live and saved in `~/Library/Application Support/<Name>/window-options.json`. The size the person leaves the window at is kept between launches.
 - **Window buttons:** with `hiddenInset` or a `trafficLightPosition`, they're centered on the page's real title bar (its top drag area). They go where macOS puts them in a unified-toolbar window like Notes or Photos, measured at runtime (19 pt in, 23 pt apart on macOS 26), or at the page's `trafficLightPosition.x`. The page's `y` is only used when the page reports no title bar.
+- **Frameless windows:** `frame: false` (needs the `overlay` permission) hides the window buttons but keeps macOS's rounded corners and shadow, as Electron does. `roundedCorners: false` gives a plain borderless window. There's no title-bar inset then, so the page uses its own padding. This is the right choice for menu bar panels that are shown by their icon and hidden on focus loss.
+- **Focus:** showing the window activates the app and gives the page keyboard focus, so pages that hide on `blur` work.
 - **Window size:** the page's size applies on first launch and whenever the page asks for a new one; otherwise the size the person left is kept. A non-resizable window always gets the page's size.
 - **Scrolling:** the Swift shell switches off page-level rubber-band bounce (`overscroll-behavior: none` on html and body), so a hidden title bar doesn't bounce with the content. A page whose content is taller than its window still scrolls; that's the page's layout, and the fix belongs in the artifact (for example a larger `height` in `window.setOptions`).
 - **Closing:** an app with a menu bar item keeps running when its window is closed or hidden by the page; clicking the Dock icon or the menu bar item brings it back. Cmd+Q, or quitting from the Dock, quits. An app without one quits with its window.

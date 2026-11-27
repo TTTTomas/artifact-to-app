@@ -77,6 +77,8 @@ final class Shell: NSObject, NSWindowDelegate, WKNavigationDelegate, WKUIDelegat
     var titleBarStyle = "default"
     var dragHeight: CGFloat = 28
     var trafficLightPosition: NSPoint?
+    /// frame: false: no window buttons and no title-bar inset.
+    var frameless = false
     /// Height of the page's top drag area, reported by bridge.js.
     var titleBandHeight: CGFloat? { didSet { if titleBandHeight != oldValue { layoutTrafficLights() } } }
     var hasAutosavedFrame = false
@@ -136,7 +138,10 @@ final class Shell: NSObject, NSWindowDelegate, WKNavigationDelegate, WKUIDelegat
     func showWindow() {
         guard captureIconPath == nil else { return }
         window.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
+        // macOS 14+ ignores the old activate(ignoringOtherApps:); without activation the window shows but never has
+        // focus, so the page never sees it lose focus (a menu bar panel that hides on blur would then stay open).
+        if #available(macOS 14.0, *) { NSApp.activate() } else { NSApp.activate(ignoringOtherApps: true) }
+        window.makeFirstResponder(webView)
         layoutTrafficLights()
     }
     func reload() { webView.load(URLRequest(url: Shell.pageURL)) }
@@ -150,7 +155,8 @@ final class Shell: NSObject, NSWindowDelegate, WKNavigationDelegate, WKUIDelegat
         if let bad = raw.keys.first(where: { !Shell.optionKeys.contains($0) }) { throw ShellError("EINVAL", "unknown window option \(bad)") }
         let o = raw
         let overlay = (o["frame"] as? Bool) == false || (o["transparent"] as? Bool) == true || (o["alwaysOnTop"] as? Bool) == true
-        if overlay && !(config.declared.contains("overlay") && captureIconPath == nil) {
+        // Declared is enough here, also in the icon-capture run: its window is never shown, and it should lay out as the app will.
+        if overlay && !config.declared.contains("overlay") {
             throw ShellError("EPERM", "frame: false, transparent and alwaysOnTop need the overlay permission")
         }
         // The icon-capture run saves nothing: the next real launch must see the page's options as new to apply them.
@@ -172,16 +178,21 @@ final class Shell: NSObject, NSWindowDelegate, WKNavigationDelegate, WKUIDelegat
 
         titleBarStyle = o["titleBarStyle"] as? String ?? "default"
         let framed = flag("frame", true)
-        let customTitleBar = framed && titleBarStyle != "default"
+        // frame: false keeps macOS's rounded corners and shadow, as Electron does: a titled window whose title bar is
+        // hidden and whose buttons are hidden. roundedCorners: false gives a plain borderless window instead.
+        frameless = !framed
+        let roundedFrameless = !framed && flag("roundedCorners", true)
+        let customTitleBar = (framed && titleBarStyle != "default") || roundedFrameless
         dragHeight = num("dragHeight") ?? 28
         if let t = o["trafficLightPosition"] as? [String: Any], let x = num("x", t), let y = num("y", t) { trafficLightPosition = NSPoint(x: x, y: y) }
         else { trafficLightPosition = nil }
 
-        var mask: NSWindow.StyleMask = framed ? [.titled, .closable] : [.borderless]
+        var mask: NSWindow.StyleMask = framed ? [.titled, .closable] : roundedFrameless ? [.titled] : [.borderless]
         if flag("resizable", true) { mask.insert(.resizable) }
         if framed && flag("minimizable", true) { mask.insert(.miniaturizable) }
         if customTitleBar { mask.insert(.fullSizeContentView) }
         window.styleMask = mask
+        for b in [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton] { window.standardWindowButton(b)?.isHidden = frameless }
         window.titlebarAppearsTransparent = customTitleBar
         window.titleVisibility = customTitleBar ? .hidden : .visible
         window.isMovable = flag("movable", true)
@@ -241,7 +252,7 @@ final class Shell: NSObject, NSWindowDelegate, WKNavigationDelegate, WKUIDelegat
     /// centered in its drag strip, as Electron does.
     func layoutTrafficLights() {
         defer { publishMetrics() }
-        guard window.styleMask.contains(.titled), !window.styleMask.contains(.fullScreen),
+        guard window.styleMask.contains(.titled), !window.styleMask.contains(.fullScreen), !frameless,
               titleBarStyle == "hiddenInset" || trafficLightPosition != nil,
               let close = window.standardWindowButton(.closeButton),
               let mini = window.standardWindowButton(.miniaturizeButton),
@@ -281,7 +292,9 @@ final class Shell: NSObject, NSWindowDelegate, WKNavigationDelegate, WKUIDelegat
         defer { layoutTitle() }
         let custom = window.styleMask.contains(.titled) && window.styleMask.contains(.fullSizeContentView)
         var inset: CGFloat = 0, height: CGFloat = 0
-        if custom, let zoom = window.standardWindowButton(.zoomButton), let close = window.standardWindowButton(.closeButton) {
+        if frameless {
+            height = titleBandHeight ?? 0
+        } else if custom, let zoom = window.standardWindowButton(.zoomButton), let close = window.standardWindowButton(.closeButton) {
             inset = (zoom.convert(zoom.bounds, to: nil).maxX + NativeTitlebar.gap).rounded()
             height = close.superview?.superview?.frame.height ?? max(titleBandHeight ?? dragHeight, 28)
         }
@@ -314,8 +327,9 @@ final class Shell: NSObject, NSWindowDelegate, WKNavigationDelegate, WKUIDelegat
     }
     func layoutTitle() {
         guard let l = titleLabel else { return }
-        let band = window.standardWindowButton(.closeButton)?.superview?.superview?.frame.height ?? max(titleBandHeight ?? dragHeight, 28)
-        let inset = (lastMetrics["insetLeft"] as? CGFloat) ?? 80
+        let container = frameless ? nil : window.standardWindowButton(.closeButton)?.superview?.superview?.frame.height
+        let band = container ?? titleBandHeight ?? max(dragHeight, 28)
+        let inset = max((lastMetrics["insetLeft"] as? CGFloat) ?? 80, 16)
         let lineH = ceil(l.intrinsicContentSize.height)
         // Centered on the window, kept clear of the buttons on both sides.
         l.frame = NSRect(x: inset, y: root.bounds.height - band + (band - lineH) / 2, width: max(root.bounds.width - 2 * inset, 0), height: lineH)
