@@ -87,6 +87,21 @@
       }
     }
     const report = { insetLeft: inset, contentLeft: Number.isFinite(left) ? Math.round(left * 10) / 10 : null, element };
+    // A title bar without a visible divider should hand over to the content at its bottom edge, as native windows do.
+    const band = matching(selectors.drag).find(b => { const r = b.getBoundingClientRect(); return r.top <= 1 && r.height > 0; });
+    if (band) {
+      const b = band.getBoundingClientRect(), st = getComputedStyle(band);
+      const bg = c => (c === "transparent" || /rgba\(.*,\s*0\)$/.test(c) ? null : c);
+      const divider = parseFloat(st.borderBottomWidth) > 0 || st.boxShadow !== "none" ||
+        (bg(st.backgroundColor) && bg(st.backgroundColor) !== bg(getComputedStyle(document.body).backgroundColor));
+      let top = Infinity;
+      for (const el of document.body.querySelectorAll("*")) {
+        if (band.contains(el) || el.contains(band)) continue;
+        const r = el.getBoundingClientRect();
+        if (r.width && r.height && r.top >= b.bottom - 1 && r.top < top) top = r.top;
+      }
+      report.below = { divider: !!divider, gap: Number.isFinite(top) ? Math.round(top - b.bottom) : null };
+    }
     // With a native centered title: does any title-bar content reach into it?
     if (wantsNativeTitle()) {
       const ctx = document.createElement("canvas").getContext("2d");

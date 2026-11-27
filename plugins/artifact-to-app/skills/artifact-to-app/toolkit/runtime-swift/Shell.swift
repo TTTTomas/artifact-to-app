@@ -153,7 +153,8 @@ final class Shell: NSObject, NSWindowDelegate, WKNavigationDelegate, WKUIDelegat
         if overlay && !(config.declared.contains("overlay") && captureIconPath == nil) {
             throw ShellError("EPERM", "frame: false, transparent and alwaysOnTop need the overlay permission")
         }
-        if !NSDictionary(dictionary: o).isEqual(to: savedOptions) {
+        // The icon-capture run saves nothing: the next real launch must see the page's options as new to apply them.
+        if captureIconPath == nil && !NSDictionary(dictionary: o).isEqual(to: savedOptions) {
             savedOptions = o
             try? FileManager.default.createDirectory(at: optionsURL.deletingLastPathComponent(), withIntermediateDirectories: true)
             try? JSONSerialization.data(withJSONObject: o, options: [.prettyPrinted, .sortedKeys]).write(to: optionsURL)

@@ -174,6 +174,10 @@ function checkTitlebar(stdout) {
     if (r.overlap) warn(`The native centered title (${r.nativeTitle.left}–${r.nativeTitle.right} pt) runs into title-bar content (${r.overlap}). Move or shrink that content in the artifact, or drop the native-title meta tag.`);
     else log(`title bar: native centered title at ${r.nativeTitle.left}–${r.nativeTitle.right} pt, clear of the page's controls`);
   }
+  if (r.below && !r.below.divider && r.below.gap > 4) {
+    warn(`The title bar has no divider, yet the content starts ${r.below.gap} pt below it. Native windows start the content at the title bar's bottom edge; ` +
+      `remove that gap in the artifact (the bar's own height already spaces the title).`);
+  }
   if (!r.insetLeft || r.contentLeft == null) return;
   if (r.contentLeft < r.insetLeft - 0.5) {
     warn(`Title-bar content (${r.element || "first item"}) starts at ${r.contentLeft} pt, but the window buttons need ${r.insetLeft} pt. ` +

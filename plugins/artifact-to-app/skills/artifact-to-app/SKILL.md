@@ -89,8 +89,10 @@ It's opt-in: the shell never guesses which element is the title.
 - A title bar that holds just the app's title plus a few small controls on the right (a status, a pin, a refresh) gets the native centered title. The page's own title and any icon next to it are hidden in the standalone app; the controls stay on the right.
 - A title bar full of controls (pills, stats, several buttons) keeps the page's own left-aligned title, styled with `--titlebar-font` and `--titlebar-color`.
 - Either way the page pads its title bar with `--titlebar-inset-left`.
+- **Blended title bar** (no divider: no bottom border or shadow, and no background of its own): the content starts right at the bar's bottom edge, with no extra gap. The bar's own height already gives the title equal room above and below, as in native windows. With a visible divider, the usual spacing below the line is fine.
+- If removing a gap leaves the page shorter than its window, reduce the `height` in `window.setOptions` to match, so nothing scrolls and no empty band remains at the bottom.
 
-During the icon-capture run the page reports where its title-bar content starts. The exporter prints `title bar: content starts at X pt, buttons need Y pt`, or a warning when X < Y. With a native centered title it also checks that no title-bar content runs into the title, and warns if any does.
+During the icon-capture run the page reports where its title-bar content starts. The exporter prints `title bar: content starts at X pt, buttons need Y pt`, or a warning when X < Y. With a native centered title it also checks that no title-bar content runs into the title, and warns if any does. It also warns when a blended title bar has a gap between it and the content.
 
 ## How the standalone app behaves (tell the user when relevant)
 - **Permissions:** whatever the page lists in its `claude-artifacts-manifest` tag is granted without asking. Undeclared permissions are refused with EPERM, as in Claude.
