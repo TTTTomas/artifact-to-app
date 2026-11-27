@@ -5,6 +5,7 @@
 //   --titlebar-height       the title bar's height (px)
 //   --titlebar-font         the native title font, as a CSS font shorthand
 //   --titlebar-color        the native title color for the window's current state (active/inactive, light/dark)
+// and classes on <html>: artifact-app always, artifact-native-title while the shell draws the window title.
 import AppKit
 
 enum NativeTitlebar {
@@ -36,11 +37,18 @@ enum NativeTitlebar {
         return "\(css) \(Int(f.pointSize.rounded()))px -apple-system, BlinkMacSystemFont, system-ui, sans-serif"
     }()
 
-    /// The title color AppKit uses: windowFrameTextColor when active, tertiaryLabelColor when inactive.
+    /// The title color as native windows show it. AppKit's windowFrameTextColor is 85% black (or white), but a
+    /// native title is drawn over the title bar's material and appears at about 57%: measured on Photos' active
+    /// title on macOS 26. So the active color is windowFrameTextColor at that strength; inactive is
+    /// tertiaryLabelColor (26%, measured about 22%).
+    static let activeAlpha: CGFloat = 0.57
+    static func nsColor(active: Bool) -> NSColor {
+        active ? NSColor.windowFrameTextColor.withAlphaComponent(activeAlpha) : .tertiaryLabelColor
+    }
     static func color(active: Bool, appearance: NSAppearance) -> String {
         var css = "inherit"
         appearance.performAsCurrentDrawingAppearance {
-            guard let c = (active ? NSColor.windowFrameTextColor : NSColor.tertiaryLabelColor).usingColorSpace(.sRGB) else { return }
+            guard let c = nsColor(active: active).usingColorSpace(.sRGB) else { return }
             css = String(format: "rgba(%d, %d, %d, %.2f)", Int((c.redComponent * 255).rounded()), Int((c.greenComponent * 255).rounded()),
                          Int((c.blueComponent * 255).rounded()), c.alphaComponent)
         }

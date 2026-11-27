@@ -60,7 +60,11 @@ With a hidden title bar, the window buttons sit where macOS puts them, measured 
 .bar h1 { font: var(--titlebar-font, 600 14px var(--sans)); color: var(--titlebar-color, var(--fg)); }
 ```
 
-The exporter measures each page and warns when its title-bar content starts under the buttons. A page with an empty title bar can add `<meta name="artifact-app:titlebar" content="native-title">` to get a native centered title.
+The exporter measures each page and warns when its title-bar content starts under the buttons.
+
+For a native centered title, a page adds `<meta name="artifact-app:titlebar" content="native-title">` and hides its own title in the standalone app with `html.artifact-native-title .bar h1 { display: none; }`. Claude's app never sets that class, so the page keeps its own title there. The exporter warns if title-bar controls run into the centered title.
+
+**Rule of thumb:** a title bar with just a title and a few small controls looks most native with the centered title. A bar full of controls keeps its own left-aligned title.
 
 ## Runtimes
 

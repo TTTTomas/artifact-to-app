@@ -68,7 +68,9 @@ The shell sets these CSS variables on `<html>` and keeps them current. They're r
 | `--titlebar-inset-left` | where title-bar content may start: right of the window buttons plus 12 pt |
 | `--titlebar-height` | the title bar's height |
 | `--titlebar-font` | the native title font as a CSS shorthand (`NSFont.titleBarFont`: system font, 13 pt, bold) |
-| `--titlebar-color` | `windowFrameTextColor`, or `tertiaryLabelColor` while the window is inactive, for light or dark mode |
+| `--titlebar-color` | the title color native windows show: `windowFrameTextColor` at 57% (measured on native titles, which appear lighter than AppKit's 85% because they're drawn over the title-bar material), or `tertiaryLabelColor` while the window is inactive, for light or dark mode |
+
+Two classes on `<html>`: `artifact-app` always, and `artifact-native-title` while the shell draws the window title. Claude's app sets neither.
 
 A page uses them with its own value as the fallback, so it looks unchanged in Claude's app, which doesn't set them:
 ```css
@@ -77,9 +79,18 @@ A page uses them with its own value as the fallback, so it looks unchanged in Cl
 ```
 If the bar sits inside a padded container, subtract that padding: `calc(var(--titlebar-inset-left, 86px) - 16px)`.
 
-A page whose title bar has no title of its own can ask for a native one with `<meta name="artifact-app:titlebar" content="native-title">`. The shell then draws the page's `<title>` centered in the title bar, in the native font and colors, and clicks go through it to the page. It's opt-in: the shell never guesses that a bar is empty.
+**Native centered title.** With `<meta name="artifact-app:titlebar" content="native-title">` the shell draws the page's `<title>` centered in the title bar, in the native font and colors. Clicks and drags go through it to the page. The page hides its own title only in the standalone app, so Claude's version keeps it:
+```css
+html.artifact-native-title .bar h1 { display: none; }
+```
+It's opt-in: the shell never guesses which element is the title.
 
-During the icon-capture run the page reports where its title-bar content starts. The exporter prints `title bar: content starts at X pt, buttons need Y pt`, or a warning when X < Y.
+**Policy for title bars** (apply it when exporting, and propose it for the artifact):
+- A title bar that holds just the app's title plus a few small controls on the right (a status, a pin, a refresh) gets the native centered title. The page's own title and any icon next to it are hidden in the standalone app; the controls stay on the right.
+- A title bar full of controls (pills, stats, several buttons) keeps the page's own left-aligned title, styled with `--titlebar-font` and `--titlebar-color`.
+- Either way the page pads its title bar with `--titlebar-inset-left`.
+
+During the icon-capture run the page reports where its title-bar content starts. The exporter prints `title bar: content starts at X pt, buttons need Y pt`, or a warning when X < Y. With a native centered title it also checks that no title-bar content runs into the title, and warns if any does.
 
 ## How the standalone app behaves (tell the user when relevant)
 - **Permissions:** whatever the page lists in its `claude-artifacts-manifest` tag is granted without asking. Undeclared permissions are refused with EPERM, as in Claude.

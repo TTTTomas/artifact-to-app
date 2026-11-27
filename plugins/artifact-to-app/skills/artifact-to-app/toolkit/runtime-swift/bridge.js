@@ -63,8 +63,11 @@
     set("--titlebar-font", metrics.font);
     set("--titlebar-color", metrics.color);
   }
-  if (document.documentElement) applyMetrics();
-  else new MutationObserver((_, o) => { if (document.documentElement) { o.disconnect(); applyMetrics(); } }).observe(document, { childList: true });
+  // artifact-app on <html> tells the page it runs in a standalone app (Claude's app never sets it).
+  const onRoot = () => { document.documentElement.classList.add("artifact-app"); applyMetrics(); };
+  if (document.documentElement) onRoot();
+  else new MutationObserver((_, o) => { if (document.documentElement) { o.disconnect(); onRoot(); } }).observe(document, { childList: true });
+  const wantsNativeTitle = () => !!document.querySelector('meta[name="artifact-app:titlebar"][content~="native-title"]');
 
   // Where the page's title-bar content starts, for the exporter's warning (sent from the icon-capture run).
   function titlebarReport() {
@@ -83,7 +86,26 @@
         if (own && r.left < left) { left = r.left; element = el.tagName.toLowerCase() + (typeof el.className === "string" && el.className ? "." + el.className.trim().split(/\s+/)[0] : ""); }
       }
     }
-    return { insetLeft: inset, contentLeft: Number.isFinite(left) ? Math.round(left * 10) / 10 : null, element };
+    const report = { insetLeft: inset, contentLeft: Number.isFinite(left) ? Math.round(left * 10) / 10 : null, element };
+    // With a native centered title: does any title-bar content reach into it?
+    if (wantsNativeTitle()) {
+      const ctx = document.createElement("canvas").getContext("2d");
+      ctx.font = cs.getPropertyValue("--titlebar-font").trim() || "700 13px -apple-system";
+      const w = Math.ceil(ctx.measureText(document.title || "").width), center = innerWidth / 2, margin = 8;
+      const t = { left: center - w / 2, right: center + w / 2 };
+      report.nativeTitle = { left: Math.round(t.left), right: Math.round(t.right) };
+      for (const band of matching(selectors.drag)) {
+        for (const el of band.querySelectorAll("*")) {
+          const r = el.getBoundingClientRect();
+          if (!r.width || !r.height || r.top > height || el.children.length) continue;
+          if (r.right > t.left - margin && r.left < t.right + margin) {
+            report.overlap = el.tagName.toLowerCase() + (typeof el.className === "string" && el.className ? "." + el.className.trim().split(/\s+/)[0] : "");
+            break;
+          }
+        }
+      }
+    }
+    return report;
   }
 
   // ---- window drag regions: WebKit ignores app-region, so tell the shell where they are ----
@@ -129,7 +151,11 @@
     schedule();
     applyMetrics();
     // Opt-in: let macOS draw the window title itself, centered, in the native font and color.
-    if (document.querySelector('meta[name="artifact-app:titlebar"][content~="native-title"]')) call("window.nativeTitle", document.title || "").catch(() => {});
+    // The page hides its own title with html.artifact-native-title (Claude's app never sets it).
+    if (wantsNativeTitle()) {
+      document.documentElement.classList.add("artifact-native-title");
+      call("window.nativeTitle", document.title || "").catch(() => {});
+    }
     if (CONFIG.captureIcon) {
       const send = () => call("report", titlebarReport()).catch(() => {});
       (document.fonts ? document.fonts.ready : Promise.resolve()).then(() => setTimeout(send, 400));

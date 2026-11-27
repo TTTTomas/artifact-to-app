@@ -170,6 +170,10 @@ function checkTitlebar(stdout) {
   const line = (stdout || "").split("\n").find(l => l.startsWith("ARTIFACT_APP_REPORT "));
   if (!line) return;
   let r; try { r = JSON.parse(line.slice(20)); } catch { return; }
+  if (r.nativeTitle) {
+    if (r.overlap) warn(`The native centered title (${r.nativeTitle.left}–${r.nativeTitle.right} pt) runs into title-bar content (${r.overlap}). Move or shrink that content in the artifact, or drop the native-title meta tag.`);
+    else log(`title bar: native centered title at ${r.nativeTitle.left}–${r.nativeTitle.right} pt, clear of the page's controls`);
+  }
   if (!r.insetLeft || r.contentLeft == null) return;
   if (r.contentLeft < r.insetLeft - 0.5) {
     warn(`Title-bar content (${r.element || "first item"}) starts at ${r.contentLeft} pt, but the window buttons need ${r.insetLeft} pt. ` +

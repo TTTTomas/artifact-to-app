@@ -319,7 +319,7 @@ final class Shell: NSObject, NSWindowDelegate, WKNavigationDelegate, WKUIDelegat
         // Centered on the window, kept clear of the buttons on both sides.
         l.frame = NSRect(x: inset, y: root.bounds.height - band + (band - lineH) / 2, width: max(root.bounds.width - 2 * inset, 0), height: lineH)
         l.autoresizingMask = [.width, .minYMargin]
-        l.textColor = window.isKeyWindow ? .windowFrameTextColor : .tertiaryLabelColor
+        l.textColor = NativeTitlebar.nsColor(active: window.isKeyWindow)
     }
 
     /// With a menu bar item, closing only hides the window (as the installed artifact does on macOS).
