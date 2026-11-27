@@ -38,10 +38,10 @@ enum NativeTitlebar {
     }()
 
     /// The title color as native windows show it. AppKit's windowFrameTextColor is 85% black (or white), but a
-    /// native title is drawn over the title bar's material and appears at about 57%: measured on Photos' active
-    /// title on macOS 26. So the active color is windowFrameTextColor at that strength; inactive is
-    /// tertiaryLabelColor (26%, measured about 22%).
-    static let activeAlpha: CGFloat = 0.57
+    /// native title is drawn over the title bar's material and appears lighter: about 57% measured on Photos'
+    /// active title on macOS 26 (from a downscaled screenshot, which lightens text a little), tuned by eye next to
+    /// native windows to 61%. Inactive is tertiaryLabelColor (26%, measured about 22%).
+    static let activeAlpha: CGFloat = 0.61
     static func nsColor(active: Bool) -> NSColor {
         active ? NSColor.windowFrameTextColor.withAlphaComponent(activeAlpha) : .tertiaryLabelColor
     }

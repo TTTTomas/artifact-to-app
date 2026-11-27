@@ -68,7 +68,7 @@ The shell sets these CSS variables on `<html>` and keeps them current. They're r
 | `--titlebar-inset-left` | where title-bar content may start: right of the window buttons plus 12 pt |
 | `--titlebar-height` | the title bar's height |
 | `--titlebar-font` | the native title font as a CSS shorthand (`NSFont.titleBarFont`: system font, 13 pt, bold) |
-| `--titlebar-color` | the title color native windows show: `windowFrameTextColor` at 57% (measured on native titles, which appear lighter than AppKit's 85% because they're drawn over the title-bar material), or `tertiaryLabelColor` while the window is inactive, for light or dark mode |
+| `--titlebar-color` | the title color native windows show: `windowFrameTextColor` at 61% (measured and tuned by eye against native titles, which appear lighter than AppKit's 85% because they're drawn over the title-bar material), or `tertiaryLabelColor` while the window is inactive, for light or dark mode |
 
 Two classes on `<html>`: `artifact-app` always, and `artifact-native-title` while the shell draws the window title. Claude's app sets neither.
 
