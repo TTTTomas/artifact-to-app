@@ -2,6 +2,10 @@
 // Turns a Claude desktop-app artifact (its saved index.html) into a standalone macOS app.
 //
 //   node <toolkit>/export.mjs <project-dir> [--runtime swift|electron] [--install [--open]] [--dmg] [--no-build]
+//   node <toolkit>/export.mjs <project-dir> --check
+//
+// --check runs the page once in the Swift shell and reports style findings (style-check.mjs), without
+//   installing. Exit code 2 when there are issues. Use it on a scratch folder holding just source.html.
 //
 // --runtime swift (default) hosts the page in WKWebView inside a small native shell
 //   (runtime-swift/, compiled once and cached in ~/Library/Caches/ArtifactApp). --runtime electron bundles Chromium (runtime/):
@@ -22,6 +26,7 @@ import crypto from "node:crypto";
 import { execFileSync, spawnSync } from "node:child_process";
 import os from "node:os";
 import { fileURLToPath } from "node:url";
+import { staticChecks, parseReport, reportChecks, mergeFindings, formatFindings } from "./style-check.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const argv = process.argv.slice(2);
@@ -38,6 +43,8 @@ const log = m => console.log("•", m);
 const warn = m => console.warn("!", m);
 const die = m => { console.error("✗", m); process.exit(1); };
 if (!["swift", "electron"].includes(runtime)) die(`Unknown runtime "${runtime}". Use swift or electron.`);
+const checkOnly = flags.has("--check");
+if (checkOnly) runtime = "swift";   // the measurements come from the Swift shell
 const dir = path.resolve(positional[0] || ".");
 
 const srcFile = path.join(dir, "source.html");
@@ -97,7 +104,16 @@ fs.writeFileSync(path.join(dir, ".gitignore"), "node_modules/\ndist/\n");
 if (flags.has("--no-build")) { log("done (not built)"); process.exit(0); }
 
 const iconFile = path.join(dir, "build", "icon.png");
+let measured = null;
 const built = runtime === "swift" ? buildSwift() : buildElectron();
+
+// ---- style findings: static rules from the source, measured rules from the shell run ----
+const { findings: measuredFindings, info } = reportChecks(measured);
+const findings = mergeFindings(staticChecks(fs.readFileSync(srcFile, "utf8")), measuredFindings);
+info.forEach(log);
+for (const line of formatFindings(findings)) (line.startsWith("✗") || line.startsWith("•") ? warn : log)(line.replace(/^[✗•] /, ""));
+if (checkOnly) { process.exitCode = findings.some(x => x.level === "issue") ? 2 : 0; process.exit(); }
+
 log(`built ${built}`);
 if (flags.has("--install")) install(built);
 
@@ -146,7 +162,7 @@ function buildSwift() {
   // The page draws its own icon: run it once with nothing granted and keep what it passes to dock.setIcon.
   fs.rmSync(iconFile, { force: true });
   const cap = spawnSync(exe, [], { env: { ...process.env, ARTIFACT_APP_CAPTURE_ICON: iconFile }, timeout: 40000, encoding: "utf8" });
-  checkTitlebar(cap.stdout);
+  measured = parseReport(cap.stdout);
   if (fs.existsSync(iconFile)) {
     log("captured the page's icon");
     const set = path.join(dir, "build", "AppIcon.iconset");
@@ -163,26 +179,6 @@ function buildSwift() {
     sign();
   } else warn("The page didn't set an icon; the app gets the generic one.");
   return app;
-}
-
-// The capture run reports where the page's title-bar content starts; warn when the window buttons would crowd it.
-function checkTitlebar(stdout) {
-  const line = (stdout || "").split("\n").find(l => l.startsWith("ARTIFACT_APP_REPORT "));
-  if (!line) return;
-  let r; try { r = JSON.parse(line.slice(20)); } catch { return; }
-  if (r.nativeTitle) {
-    if (r.overlap) warn(`The native centered title (${r.nativeTitle.left}–${r.nativeTitle.right} pt) runs into title-bar content (${r.overlap}). Move or shrink that content in the artifact, or drop the native-title meta tag.`);
-    else log(`title bar: native centered title at ${r.nativeTitle.left}–${r.nativeTitle.right} pt, clear of the page's controls`);
-  }
-  if (r.below && !r.below.divider && r.below.gap > 4) {
-    warn(`The title bar has no divider, yet the content starts ${r.below.gap} pt below it. Native windows start the content at the title bar's bottom edge; ` +
-      `remove that gap in the artifact (the bar's own height already spaces the title).`);
-  }
-  if (!r.insetLeft || r.contentLeft == null) return;
-  if (r.contentLeft < r.insetLeft - 0.5) {
-    warn(`Title-bar content (${r.element || "first item"}) starts at ${r.contentLeft} pt, but the window buttons need ${r.insetLeft} pt. ` +
-      `In the artifact, pad the title bar with var(--titlebar-inset-left, <current value>) so it fits in both Claude and the standalone app.`);
-  } else log(`title bar: content starts at ${r.contentLeft} pt, buttons need ${r.insetLeft} pt`);
 }
 
 function plist(obj) {

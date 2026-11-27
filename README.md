@@ -29,6 +29,20 @@ You can also type `/artifact-to-app`.
 - Network access on the first export of a page, to download its Google Fonts.
 - npm, only if you use `--runtime electron`.
 
+## Style: making artifacts look native
+
+The plugin also teaches Claude how desktop-app artifacts should look, so new pages come out right and old ones get fixed:
+
+- **`desktop-app-style` skill:** the rules for title bars, window buttons, spacing, window size and menu bar panels, each with the CSS to use. Every rule keeps a fallback, so the page looks unchanged or better in Claude's app too.
+- **Publish hook:** after Claude publishes a page that calls `claude.use("desktop")`, the hook checks it against the rules and hands Claude the findings. This works even when the style skill wasn't loaded.
+- **`--check`:** runs the page once in the Swift shell and measures what can only be measured live (title-bar positions, the gap under the bar, overlap with a centered title, window height), without installing:
+
+```bash
+node plugins/artifact-to-app/skills/artifact-to-app/toolkit/export.mjs <folder with source.html> --check
+```
+
+Exports run the same check. The export skill offers to fix the artifact, then republishes and rebuilds.
+
 ## What happens
 
 Claude saves the artifact's page into a project folder of your choice, as `source.html`, and runs the exporter:

@@ -48,7 +48,11 @@ The compiled Swift shell is cached in `~/Library/Caches/ArtifactApp`. It is rebu
    `--install` quits the running app (wherever it runs from) and replaces `/Applications/<Name>.app`. It only replaces an earlier export with the same bundle id, from either runtime; if something else has that name, it stops and says so. In that case ask the user, and don't delete it yourself.
 
    Leave out `--install` only if the user says not to install. `--runtime electron` uses Electron instead (`--dmg` makes a disk image there). `--no-build` only regenerates `app/`.
-4. **Read the warnings.** If the exporter says title-bar content starts left of where the window buttons end, the fix goes in the artifact (see "Title bar" below). Make that change in the artifact, republish it, update `source.html` and export again: a fallback keeps the page unchanged in Claude's app.
+4. **Fix the style findings.** The exporter ends with a style check. Its findings are named after the rules in the **desktop-app-style** skill (load it). Pages made before that skill existed usually have some.
+   - For each issue, and each tip that clearly applies, propose the fix to the user: what changes and why.
+   - On their yes, edit the artifact with fallbacks, so it also improves in Claude's app, and republish it. Copy the new page to `source.html` and export again.
+   - `node "$TOOLKIT/export.mjs" <folder> --check` runs the check alone, without installing.
+   - Window height (`fits-window`) is measured before permissions are granted; confirm it in the running app with `ARTIFACT_APP_DEBUG=1` before changing it.
 
    Then the capability warnings. The page may use capabilities other than `desktop`: `sample`, `db`, `mcp`, `artifact`, `user` and so on. Those need Claude, and `claude.use()` returns `null` for them in the standalone app. Tell the user which features of the page will be missing. Also report `desktop.pty` (not provided) and any assets still loaded from the network.
 5. **Verify.**
@@ -61,6 +65,7 @@ The compiled Swift shell is cached in `~/Library/Caches/ArtifactApp`. It is rebu
 6. **Report** that it's installed in /Applications, with anything that differs from the Claude-installed version.
 
 ## Title bar (the page's part)
+The full style rules and when to use each are in the **desktop-app-style** skill; this is a summary.
 The shell sets these CSS variables on `<html>` and keeps them current. They're read from AppKit, not guessed:
 
 | Variable | Value |

@@ -1,0 +1,17 @@
+{
+  "description": "After an artifact is published, checks desktop-app pages against the desktop-app-style rules and reminds Claude to apply them.",
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Artifact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/desktop-style-check.mjs\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}

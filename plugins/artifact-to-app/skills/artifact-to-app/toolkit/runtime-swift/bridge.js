@@ -101,7 +101,20 @@
         if (r.width && r.height && r.top >= b.bottom - 1 && r.top < top) top = r.top;
       }
       report.below = { divider: !!divider, gap: Number.isFinite(top) ? Math.round(top - b.bottom) : null };
+      // What the bar holds: visible leaf items, and whether one of them is a title.
+      // An item is something you'd see as one thing: text, a control or a picture, not counted again inside another.
+      const isItem = el => {
+        const r = el.getBoundingClientRect();
+        return r.width && r.height && ([...el.childNodes].some(n => n.nodeType === 3 && n.textContent.trim()) ||
+          /^(button|a|input|select|img|svg|canvas|picture)$/i.test(el.tagName));
+      };
+      const items = [...band.querySelectorAll("*")].filter(isItem)
+        .filter(el => { for (let p = el.parentElement; p && p !== band; p = p.parentElement) if (isItem(p)) return false; return true; });
+      const hasTitle = !!band.querySelector("h1, h2, h3, [class*=title], [class*=brand]");
+      report.band = { items: items.length, hasTitle };
     }
+    const d = document.documentElement;
+    report.page = { content: Math.max(d.scrollHeight, document.body.scrollHeight), viewport: innerHeight };
     // With a native centered title: does any title-bar content reach into it?
     if (wantsNativeTitle()) {
       const ctx = document.createElement("canvas").getContext("2d");
