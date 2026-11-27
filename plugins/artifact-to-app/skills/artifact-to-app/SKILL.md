@@ -48,7 +48,9 @@ The compiled Swift shell is cached in `~/Library/Caches/ArtifactApp`. It is rebu
    `--install` quits the running app (wherever it runs from) and replaces `/Applications/<Name>.app`. It only replaces an earlier export with the same bundle id, from either runtime; if something else has that name, it stops and says so. In that case ask the user, and don't delete it yourself.
 
    Leave out `--install` only if the user says not to install. `--runtime electron` uses Electron instead (`--dmg` makes a disk image there). `--no-build` only regenerates `app/`.
-4. **Read the warnings.** The page may use capabilities other than `desktop`: `sample`, `db`, `mcp`, `artifact`, `user` and so on. Those need Claude, and `claude.use()` returns `null` for them in the standalone app. Tell the user which features of the page will be missing. Also report `desktop.pty` (not provided) and any assets still loaded from the network.
+4. **Read the warnings.** If the exporter says title-bar content starts left of where the window buttons end, the fix goes in the artifact (see "Title bar" below). Make that change in the artifact, republish it, update `source.html` and export again: a fallback keeps the page unchanged in Claude's app.
+
+   Then the capability warnings. The page may use capabilities other than `desktop`: `sample`, `db`, `mcp`, `artifact`, `user` and so on. Those need Claude, and `claude.use()` returns `null` for them in the standalone app. Tell the user which features of the page will be missing. Also report `desktop.pty` (not provided) and any assets still loaded from the network.
 5. **Verify.**
    - With computer use, `request_access` the app's bundle id (`local.artifact.<slug>`) and take an `app_screenshot`. Check that it shows live data, not the page's example rows or "install" notice.
    - The first screenshot of a fresh WKWebView window can come back blank; take another after a few seconds.
@@ -58,13 +60,35 @@ The compiled Swift shell is cached in `~/Library/Caches/ArtifactApp`. It is rebu
    - Simulated drags and scrolls don't behave like real ones. Ask the user to try dragging the title bar and scrolling.
 6. **Report** that it's installed in /Applications, with anything that differs from the Claude-installed version.
 
+## Title bar (the page's part)
+The shell sets these CSS variables on `<html>` and keeps them current. They're read from AppKit, not guessed:
+
+| Variable | Value |
+| --- | --- |
+| `--titlebar-inset-left` | where title-bar content may start: right of the window buttons plus 12 pt |
+| `--titlebar-height` | the title bar's height |
+| `--titlebar-font` | the native title font as a CSS shorthand (`NSFont.titleBarFont`: system font, 13 pt, bold) |
+| `--titlebar-color` | `windowFrameTextColor`, or `tertiaryLabelColor` while the window is inactive, for light or dark mode |
+
+A page uses them with its own value as the fallback, so it looks unchanged in Claude's app, which doesn't set them:
+```css
+.desktop .bar { padding-left: var(--titlebar-inset-left, 84px); }
+.bar h1 { font: var(--titlebar-font, 600 14px var(--sans)); color: var(--titlebar-color, var(--fg)); }
+```
+If the bar sits inside a padded container, subtract that padding: `calc(var(--titlebar-inset-left, 86px) - 16px)`.
+
+A page whose title bar has no title of its own can ask for a native one with `<meta name="artifact-app:titlebar" content="native-title">`. The shell then draws the page's `<title>` centered in the title bar, in the native font and colors, and clicks go through it to the page. It's opt-in: the shell never guesses that a bar is empty.
+
+During the icon-capture run the page reports where its title-bar content starts. The exporter prints `title bar: content starts at X pt, buttons need Y pt`, or a warning when X < Y.
+
 ## How the standalone app behaves (tell the user when relevant)
 - **Permissions:** whatever the page lists in its `claude-artifacts-manifest` tag is granted without asking. Undeclared permissions are refused with EPERM, as in Claude.
 - **Notifications** are macOS's own: the first one asks the person to allow them.
 - **Window options:** the page sets them with `window.setOptions`. They are applied live and saved in `~/Library/Application Support/<Name>/window-options.json`. The size the person leaves the window at is kept between launches.
-- **Window buttons:** with `hiddenInset`, they sit 10 pt from the edge, centered on the page's real title bar.
+- **Window buttons:** with `hiddenInset` or a `trafficLightPosition`, they're centered on the page's real title bar (its top drag area). They go where macOS puts them in a unified-toolbar window like Notes or Photos, measured at runtime (19 pt in, 23 pt apart on macOS 26), or at the page's `trafficLightPosition.x`. The page's `y` is only used when the page reports no title bar.
+- **Window size:** the page's size applies on first launch and whenever the page asks for a new one; otherwise the size the person left is kept. A non-resizable window always gets the page's size.
 - **Scrolling:** the Swift shell switches off page-level rubber-band bounce (`overscroll-behavior: none` on html and body), so a hidden title bar doesn't bounce with the content. A page whose content is taller than its window still scrolls; that's the page's layout, and the fix belongs in the artifact (for example a larger `height` in `window.setOptions`).
-- **Closing:** with a menu bar item, closing the window hides it. Cmd+Q, or quitting from the Dock, quits.
+- **Closing:** an app with a menu bar item keeps running when its window is closed or hidden by the page; clicking the Dock icon or the menu bar item brings it back. Cmd+Q, or quitting from the Dock, quits. An app without one quits with its window.
 - **Not covered:** `pty` (rejects ENOSYS); Dock progress and menu.
 - **Updates:** the app doesn't follow republished versions of the artifact. Re-run steps 2–3 to update it.
 - **Signing:** apps are signed ad hoc, not with a developer ID. They're fine on the Mac that built them; on another Mac, right-click and choose Open the first time, and macOS may refuse them. Sharing built apps properly needs an Apple Developer ID to sign and notarize them.

@@ -3,6 +3,11 @@
 import AppKit
 import WebKit
 
+/// A label the mouse goes through, so the page under it still gets clicks and title-bar drags.
+final class PassThroughLabel: NSTextField {
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+}
+
 final class ShellWindow: NSWindow {
     override var canBecomeKey: Bool { true }   // also when frame: false (borderless)
     override var canBecomeMain: Bool { true }
@@ -90,11 +95,6 @@ final class Shell: NSObject, NSWindowDelegate, WKNavigationDelegate, WKUIDelegat
         let wc = WKWebViewConfiguration()
         wc.setURLSchemeHandler(SchemeHandler(), forURLScheme: "artifact")
         wc.userContentController.addScriptMessageHandler(desktop, contentWorld: .page, name: "desktop")
-        let cfg: [String: Any] = ["declared": config.declared, "captureIcon": captureIconPath != nil]
-        let cfgJSON = String(data: try! JSONSerialization.data(withJSONObject: cfg), encoding: .utf8)!
-        let bridge = (try? String(contentsOf: resources.appendingPathComponent("bridge.js"), encoding: .utf8)) ?? ""
-        wc.userContentController.addUserScript(WKUserScript(source: "window.__ARTIFACT_CONFIG__ = \(cfgJSON);\n\(bridge)",
-                                                            injectionTime: .atDocumentStart, forMainFrameOnly: true, in: .page))
         wc.preferences.setValue(true, forKey: "developerExtrasEnabled")
         webView = ShellWebView(frame: .zero, configuration: wc)
         super.init()
@@ -114,10 +114,22 @@ final class Shell: NSObject, NSWindowDelegate, WKNavigationDelegate, WKUIDelegat
         if #available(macOS 13.3, *) { webView.isInspectable = true }
 
         // Style first, then the frame the person left: changing the title-bar style resizes the window.
-        hasAutosavedFrame = UserDefaults.standard.string(forKey: "NSWindow Frame \(config.name)") != nil
+        // The icon-capture run never saves a frame; a non-resizable window always gets the page's size.
+        let fixedSize = (savedOptions["resizable"] as? Bool) == false
+        hasAutosavedFrame = captureIconPath == nil && UserDefaults.standard.string(forKey: "NSWindow Frame \(config.name)") != nil
         applyOptions(savedOptions, initial: true)
-        if hasAutosavedFrame { window.setFrameUsingName(config.name) } else { window.center() }
-        window.setFrameAutosaveName(config.name)
+        if hasAutosavedFrame {
+            let size = window.frame.size
+            window.setFrameUsingName(config.name)
+            if fixedSize { window.setFrame(NSRect(x: window.frame.minX, y: window.frame.maxY - size.height, width: size.width, height: size.height), display: false) }
+        } else { window.center() }
+        if captureIconPath == nil { window.setFrameAutosaveName(config.name) }
+        let cfg: [String: Any] = ["declared": config.declared, "captureIcon": captureIconPath != nil, "metrics": metrics()]
+        let cfgJSON = String(data: try! JSONSerialization.data(withJSONObject: cfg), encoding: .utf8)!
+        let bridge = (try? String(contentsOf: resources.appendingPathComponent("bridge.js"), encoding: .utf8)) ?? ""
+        webView.configuration.userContentController.addUserScript(WKUserScript(source: "window.__ARTIFACT_CONFIG__ = \(cfgJSON);\n\(bridge)",
+                                                                              injectionTime: .atDocumentStart, forMainFrameOnly: true, in: .page))
+        appearanceObservation = NSApp.observe(\.effectiveAppearance) { [weak self] _, _ in DispatchQueue.main.async { self?.publishMetrics() } }
         webView.load(URLRequest(url: Shell.pageURL))
     }
 
@@ -199,7 +211,8 @@ final class Shell: NSObject, NSWindowDelegate, WKNavigationDelegate, WKUIDelegat
         // The page's size applies on first launch and when the page asks for a new one; otherwise the size the person left is kept.
         let sizeAsked = num("width") != nil || num("height") != nil
         let sizeChanged = num("width") != num("width", prev) || num("height") != num("height", prev)
-        if sizeAsked && (initial ? !hasAutosavedFrame : sizeChanged) {
+        let fixedSize = !flag("resizable", true)
+        if sizeAsked && (initial ? (!hasAutosavedFrame || fixedSize) : (sizeChanged || fixedSize)) {
             var size = window.contentRect(forFrameRect: window.frame).size
             size.width = num("width") ?? size.width
             size.height = num("height") ?? size.height
@@ -226,6 +239,7 @@ final class Shell: NSObject, NSWindowDelegate, WKNavigationDelegate, WKUIDelegat
     /// hiddenInset (or a trafficLightPosition) moves the window buttons into the page's own title bar,
     /// centered in its drag strip, as Electron does.
     func layoutTrafficLights() {
+        defer { publishMetrics() }
         guard window.styleMask.contains(.titled), !window.styleMask.contains(.fullScreen),
               titleBarStyle == "hiddenInset" || trafficLightPosition != nil,
               let close = window.standardWindowButton(.closeButton),
@@ -238,22 +252,79 @@ final class Shell: NSObject, NSWindowDelegate, WKNavigationDelegate, WKUIDelegat
         cf.size.height = h
         cf.origin.y = window.frame.height - h
         container.frame = cf
-        let spacing = mini.frame.minX - close.frame.minX > 0 ? mini.frame.minX - close.frame.minX : 20
-        // Pages written for Claude's app leave about 70–84 pt for the buttons; start them near the edge.
-        let x0 = trafficLightPosition?.x ?? 10
-        let fromTop = trafficLightPosition?.y ?? (h - close.frame.height) / 2
+        // Where macOS itself puts them (measured on this macOS version), unless the page gives an x.
+        let spacing = NativeTitlebar.buttons.spacing
+        let x0 = trafficLightPosition?.x ?? NativeTitlebar.buttons.x
+        // Centered on the page's real title bar when it reports one: a trafficLightPosition.y tuned for Claude's
+        // app rarely matches the bar as rendered here. Its x is kept.
+        let fromTop = titleBandHeight != nil ? (h - close.frame.height) / 2 : (trafficLightPosition?.y ?? (h - close.frame.height) / 2)
         for (i, b) in [close, mini, zoom].enumerated() {
             b.setFrameOrigin(NSPoint(x: x0 + CGFloat(i) * spacing, y: h - fromTop - b.frame.height))
         }
         debugLog("traffic lights h=\(h) container=\(container.frame) close=\(close.frame) window=\(window.frame) webView=\(webView.frame)")
+        publishMetrics()
     }
     func windowDidResize(_ notification: Notification) { layoutTrafficLights() }
     func windowDidBecomeKey(_ notification: Notification) { layoutTrafficLights() }
+    func windowDidChangeOcclusionState(_ notification: Notification) { publishMetrics() }
     func windowDidResignKey(_ notification: Notification) { layoutTrafficLights() }
+    func windowDidChangeEffectiveAppearance() { layoutTitle() }
     func windowDidExitFullScreen(_ notification: Notification) { layoutTrafficLights() }
+
+    // MARK: title-bar metrics for the page (see Titlebar.swift)
+    var useNativeTitle = false
+    private var lastMetrics: [String: Any] = [:]
+    private var appearanceObservation: NSKeyValueObservation?
+
+    func metrics() -> [String: Any] {
+        defer { layoutTitle() }
+        let custom = window.styleMask.contains(.titled) && window.styleMask.contains(.fullSizeContentView)
+        var inset: CGFloat = 0, height: CGFloat = 0
+        if custom, let zoom = window.standardWindowButton(.zoomButton), let close = window.standardWindowButton(.closeButton) {
+            inset = (zoom.convert(zoom.bounds, to: nil).maxX + NativeTitlebar.gap).rounded()
+            height = close.superview?.superview?.frame.height ?? max(titleBandHeight ?? dragHeight, 28)
+        }
+        return ["insetLeft": inset, "height": height, "font": NativeTitlebar.font,
+                "color": NativeTitlebar.color(active: window.isKeyWindow || captureIconPath != nil, appearance: NSApp.effectiveAppearance)]
+    }
+    func publishMetrics() {
+        let m = metrics()
+        guard !NSDictionary(dictionary: m).isEqual(to: lastMetrics) else { return }
+        lastMetrics = m
+        desktop.emit("metrics", m)
+    }
+    /// A page with <meta name="artifact-app:titlebar" content="native-title"> gets a native window title:
+    /// AppKit's title font and colors, centered in the page's own title bar (AppKit's own title would sit at the
+    /// top of a taller bar, next to the buttons). Clicks and drags go through it to the page.
+    private var titleLabel: PassThroughLabel?
+    func setNativeTitle(_ title: String?) {
+        useNativeTitle = true
+        if let t = title, !t.isEmpty { window.title = t }
+        if titleLabel == nil {
+            let l = PassThroughLabel(labelWithString: window.title)
+            l.alignment = .center
+            l.lineBreakMode = .byTruncatingTail
+            l.font = NSFont.titleBarFont(ofSize: 0)
+            root.addSubview(l, positioned: .above, relativeTo: webView)
+            titleLabel = l
+        }
+        titleLabel?.stringValue = window.title
+        layoutTitle()
+    }
+    func layoutTitle() {
+        guard let l = titleLabel else { return }
+        let band = window.standardWindowButton(.closeButton)?.superview?.superview?.frame.height ?? max(titleBandHeight ?? dragHeight, 28)
+        let inset = (lastMetrics["insetLeft"] as? CGFloat) ?? 80
+        let lineH = ceil(l.intrinsicContentSize.height)
+        // Centered on the window, kept clear of the buttons on both sides.
+        l.frame = NSRect(x: inset, y: root.bounds.height - band + (band - lineH) / 2, width: max(root.bounds.width - 2 * inset, 0), height: lineH)
+        l.autoresizingMask = [.width, .minYMargin]
+        l.textColor = window.isKeyWindow ? .windowFrameTextColor : .tertiaryLabelColor
+    }
 
     /// With a menu bar item, closing only hides the window (as the installed artifact does on macOS).
     func windowShouldClose(_ sender: NSWindow) -> Bool {
+        debugLog("windowShouldClose tray=\(desktop.tray != nil)")
         if desktop.tray != nil { window.orderOut(nil); return false }
         return true
     }

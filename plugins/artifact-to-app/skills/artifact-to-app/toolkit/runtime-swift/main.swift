@@ -35,7 +35,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             DispatchQueue.main.asyncAfter(deadline: .now() + 20) { stderrLine("The page never set an icon."); exit(2) }
         }
     }
-    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
+    /// A menu bar app keeps running with its window hidden (closed, or hidden by the page); others quit with their window.
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { shell?.desktop.tray == nil }
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         shell.showWindow(); return true
     }

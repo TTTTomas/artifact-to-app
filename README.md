@@ -51,6 +51,17 @@ node plugins/artifact-to-app/skills/artifact-to-app/toolkit/export.mjs ~/Project
 
 **Updating an app:** replace `source.html` and run the exporter again. Apps don't follow republished artifacts on their own.
 
+## Title bar
+
+With a hidden title bar, the window buttons sit where macOS puts them, measured at runtime from a unified-toolbar window. The page's title bar is drawn by the page. The shell tells it where it may start and how a native title looks, through CSS variables on `<html>`: `--titlebar-inset-left`, `--titlebar-height`, `--titlebar-font` and `--titlebar-color`. Use them with your current values as fallbacks, so the page also looks right in Claude's app:
+
+```css
+.desktop .bar { padding-left: var(--titlebar-inset-left, 84px); }
+.bar h1 { font: var(--titlebar-font, 600 14px var(--sans)); color: var(--titlebar-color, var(--fg)); }
+```
+
+The exporter measures each page and warns when its title-bar content starts under the buttons. A page with an empty title bar can add `<meta name="artifact-app:titlebar" content="native-title">` to get a native centered title.
+
 ## Runtimes
 
 Both runtimes grant exactly the permissions the page declares in its `claude-artifacts-manifest`; anything else is refused with `EPERM`. `claude.use()` returns `null` for capabilities other than `desktop` (`sample`, `db`, `mcp`, …), because those need Claude. Neither runtime provides `pty` or Dock progress and menu.
@@ -61,6 +72,7 @@ Both runtimes grant exactly the permissions the page declares in its `claude-art
 | `bridge.js` | Injected at document start. It builds the desktop namespace, posts calls to the shell (replies come back as promises), reports CSS `app-region` drag areas (WebKit ignores them) and switches off page bounce. |
 | `Desktop.swift` | Carries out each call: files (POSIX), processes (`Process` with streamed output), the menu bar item (`NSStatusItem`), notifications (`UNUserNotificationCenter`), global shortcuts (Carbon hot keys) and Dock icon and badge. |
 | `Shell.swift` | The window and WKWebView. The page is served from the bundle as `artifact://app/…`. Window options are applied live, the window buttons are inset for `hiddenInset`, drag areas move the window, and links open in the browser. |
+| `Titlebar.swift` | Native title-bar metrics read from AppKit: button position and spacing, title font and colors. |
 | `Menus.swift` | Electron-style menu templates and the default menus. |
 | `main.swift` | App startup and config. |
 

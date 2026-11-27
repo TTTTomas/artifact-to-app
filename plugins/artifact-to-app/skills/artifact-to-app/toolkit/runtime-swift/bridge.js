@@ -50,6 +50,42 @@
     };
   }
 
+  // ---- native title-bar metrics as CSS variables (see Titlebar.swift) ----
+  // --titlebar-inset-left, --titlebar-height, --titlebar-font, --titlebar-color. A page uses them with its own
+  // fallback, e.g. padding-left: var(--titlebar-inset-left, 84px), so it looks the same in Claude's app.
+  let metrics = CONFIG.metrics || null;
+  function applyMetrics() {
+    const root = document.documentElement;
+    if (!root || !metrics) return;
+    const set = (k, v) => (v ? root.style.setProperty(k, v) : root.style.removeProperty(k));
+    set("--titlebar-inset-left", metrics.insetLeft > 0 ? metrics.insetLeft + "px" : "");
+    set("--titlebar-height", metrics.height > 0 ? metrics.height + "px" : "");
+    set("--titlebar-font", metrics.font);
+    set("--titlebar-color", metrics.color);
+  }
+  if (document.documentElement) applyMetrics();
+  else new MutationObserver((_, o) => { if (document.documentElement) { o.disconnect(); applyMetrics(); } }).observe(document, { childList: true });
+
+  // Where the page's title-bar content starts, for the exporter's warning (sent from the icon-capture run).
+  function titlebarReport() {
+    const cs = getComputedStyle(document.documentElement);
+    const inset = parseFloat(cs.getPropertyValue("--titlebar-inset-left")) || 0;
+    const height = parseFloat(cs.getPropertyValue("--titlebar-height")) || 60;
+    selectors ||= dragSelectors();
+    let left = Infinity, element = "";
+    for (const band of matching(selectors.drag)) {
+      const b = band.getBoundingClientRect();
+      if (b.top > 1 || !b.height) continue;
+      for (const el of band.querySelectorAll("*")) {
+        const r = el.getBoundingClientRect();
+        if (!r.width || !r.height || r.top > height) continue;
+        const own = [...el.childNodes].some(n => n.nodeType === 3 && n.textContent.trim()) || /^(img|svg|canvas|button|input|select|picture)$/i.test(el.tagName);
+        if (own && r.left < left) { left = r.left; element = el.tagName.toLowerCase() + (typeof el.className === "string" && el.className ? "." + el.className.trim().split(/\s+/)[0] : ""); }
+      }
+    }
+    return { insetLeft: inset, contentLeft: Number.isFinite(left) ? Math.round(left * 10) / 10 : null, element };
+  }
+
   // ---- window drag regions: WebKit ignores app-region, so tell the shell where they are ----
   function dragSelectors() {
     const drag = [], noDrag = [];
@@ -68,11 +104,12 @@
     return { drag, noDrag };
   }
   let selectors = null, lastRegions = "", pending = false;
+  const matching = list => list.flatMap(s => { if (s instanceof Element) return [s]; try { return [...document.querySelectorAll(s)]; } catch { return []; } });
   function sendRegions() {
     pending = false;
     if (!document.body) return;
     selectors ||= dragSelectors();
-    const els = list => list.flatMap(s => { if (s instanceof Element) return [s]; try { return [...document.querySelectorAll(s)]; } catch { return []; } });
+    const els = matching;
     const rect = el => { const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0 ? [r.left, r.top, r.width, r.height] : null; };
     const dragEls = els(selectors.drag);
     // Controls inside a drag region stay clickable even if the page forgot to mark them no-drag.
@@ -90,6 +127,13 @@
     document.head.prepend(noBounce);
     selectors = dragSelectors();
     schedule();
+    applyMetrics();
+    // Opt-in: let macOS draw the window title itself, centered, in the native font and color.
+    if (document.querySelector('meta[name="artifact-app:titlebar"][content~="native-title"]')) call("window.nativeTitle", document.title || "").catch(() => {});
+    if (CONFIG.captureIcon) {
+      const send = () => call("report", titlebarReport()).catch(() => {});
+      (document.fonts ? document.fonts.ready : Promise.resolve()).then(() => setTimeout(send, 400));
+    }
     new MutationObserver(m => { if (m.some(r => r.target.nodeName === "STYLE" || [...r.addedNodes].some(n => n.nodeName === "STYLE"))) selectors = null; schedule(); })
       .observe(document.documentElement, { subtree: true, childList: true, attributes: true, characterData: true });
     new ResizeObserver(schedule).observe(document.documentElement);
@@ -101,6 +145,7 @@
   Object.defineProperty(window, "__artifactDesktop", { value: Object.freeze({
     event(kind, p) {
       if (kind === "callback") callbacks.get(p.id)?.(p.payload ?? undefined);
+      else if (kind === "metrics") { metrics = p; applyMetrics(); schedule(); }
       else if (kind === "proc") { const emit = procs.get(p[0]); if (emit) { emit(p[1], p[2] ?? null, p[3] ?? null); if (p[1] === "close") procs.delete(p[0]); } }
     },
   }) });

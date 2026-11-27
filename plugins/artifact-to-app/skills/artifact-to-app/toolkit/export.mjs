@@ -106,7 +106,7 @@ if (flags.has("--install")) install(built);
 // =====================================================================================
 function buildSwift() {
   const src = path.join(HERE, "runtime-swift");
-  const sources = ["main.swift", "Shell.swift", "Desktop.swift", "Menus.swift"].map(f => path.join(src, f));
+  const sources = ["main.swift", "Shell.swift", "Desktop.swift", "Menus.swift", "Titlebar.swift"].map(f => path.join(src, f));
   const target = `${process.arch === "arm64" ? "arm64" : "x86_64"}-apple-macos13.0`;
   const swiftVersion = execFileSync("/usr/bin/swiftc", ["--version"], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
   const hash = crypto.createHash("sha1").update(swiftVersion).update(target);
@@ -145,7 +145,8 @@ function buildSwift() {
 
   // The page draws its own icon: run it once with nothing granted and keep what it passes to dock.setIcon.
   fs.rmSync(iconFile, { force: true });
-  spawnSync(exe, [], { env: { ...process.env, ARTIFACT_APP_CAPTURE_ICON: iconFile }, timeout: 40000, encoding: "utf8" });
+  const cap = spawnSync(exe, [], { env: { ...process.env, ARTIFACT_APP_CAPTURE_ICON: iconFile }, timeout: 40000, encoding: "utf8" });
+  checkTitlebar(cap.stdout);
   if (fs.existsSync(iconFile)) {
     log("captured the page's icon");
     const set = path.join(dir, "build", "AppIcon.iconset");
@@ -162,6 +163,18 @@ function buildSwift() {
     sign();
   } else warn("The page didn't set an icon; the app gets the generic one.");
   return app;
+}
+
+// The capture run reports where the page's title-bar content starts; warn when the window buttons would crowd it.
+function checkTitlebar(stdout) {
+  const line = (stdout || "").split("\n").find(l => l.startsWith("ARTIFACT_APP_REPORT "));
+  if (!line) return;
+  let r; try { r = JSON.parse(line.slice(20)); } catch { return; }
+  if (!r.insetLeft || r.contentLeft == null) return;
+  if (r.contentLeft < r.insetLeft - 0.5) {
+    warn(`Title-bar content (${r.element || "first item"}) starts at ${r.contentLeft} pt, but the window buttons need ${r.insetLeft} pt. ` +
+      `In the artifact, pad the title bar with var(--titlebar-inset-left, <current value>) so it fits in both Claude and the standalone app.`);
+  } else log(`title bar: content starts at ${r.contentLeft} pt, buttons need ${r.insetLeft} pt`);
 }
 
 function plist(obj) {

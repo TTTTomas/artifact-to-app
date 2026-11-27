@@ -81,6 +81,10 @@ final class Desktop: NSObject, WKScriptMessageHandlerWithReply, UNUserNotificati
     var trayAction: MenuAction?
     let hotkeys = HotKeys()
     var notificationsReady = false
+    var captureIconWritten = false, captureReported = false
+    func finishCapture() {
+        if captureIconWritten && captureReported { DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { exit(0) } }
+    }
 
     // MARK: dispatch
     static func permission(for op: String) -> String? {
@@ -245,6 +249,14 @@ final class Desktop: NSObject, WKScriptMessageHandlerWithReply, UNUserNotificati
                 if (d(1)["visibleOnFullScreen"] as? Bool) ?? false { shell.window.collectionBehavior.insert(.fullScreenAuxiliary) }
             } else { shell.window.collectionBehavior.remove([.canJoinAllSpaces, .fullScreenAuxiliary]) }
             ok(nil)
+        case "window.nativeTitle": shell.setNativeTitle(s(0)); ok(nil)
+        case "report":
+            // The exporter reads this line from the icon-capture run.
+            if captureIconPath != nil, let json = try? JSONSerialization.data(withJSONObject: d(0)), let line = String(data: json, encoding: .utf8) {
+                print("ARTIFACT_APP_REPORT \(line)"); fflush(stdout)
+                captureReported = true; finishCapture()
+            }
+            ok(nil)
         case "drag.regions":
             let r = d(0)
             func rects(_ k: String) -> [NSRect] {
@@ -271,7 +283,9 @@ final class Desktop: NSObject, WKScriptMessageHandlerWithReply, UNUserNotificati
                 try? FileManager.default.createDirectory(atPath: (out as NSString).deletingLastPathComponent, withIntermediateDirectories: true)
                 try Desktop.png(img, side: 1024).write(to: URL(fileURLWithPath: out))
                 ok(["written": true])
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { exit(0) }
+                // Quit once the page has also sent its title-bar report, or after 3 s without one.
+                captureIconWritten = true; finishCapture()
+                DispatchQueue.main.asyncAfter(deadline: .now() + 3) { exit(0) }
                 return
             }
             NSApp.applicationIconImage = img
